@@ -1,0 +1,55 @@
+{
+  "pet": {
+    "size": 180,
+    "always_on_top": true,
+    "click_through": false
+  },
+  "animation": {
+    "fps": 4,
+    "state_switch_minutes": 20
+  },
+  "reminders": [
+    {
+      "id": "lunch",
+      "name": "吃午餐",
+      "time": "12:15",
+      "message": "中午啦！快去吃午饭哦，库洛米陪你一起~",
+      "enabled": true
+    },
+    {
+      "id": "dinner",
+      "name": "吃晚餐",
+      "time": "18:15",
+      "message": "晚餐时间到！主人今天想吃什么呢？",
+      "enabled": true
+    },
+    {
+      "id": "offwork",
+      "name": "下班提醒",
+      "time": "18:00",
+      "message": "叮咚~下班时间到啦！库洛米要回家咯！",
+      "enabled": true
+    },
+    {
+      "id": "water_1",
+      "name": "喝水提醒",
+      "time": "10:00",
+      "message": "记得喝水哦！多喝水皮肤才会好~",
+      "enabled": true
+    },
+    {
+      "id": "water_2",
+      "name": "喝水提醒",
+      "time": "14:30",
+      "message": "该补充水分啦！库洛米也在喝水哦~",
+      "enabled": true
+    },
+    {
+      "id": "water_3",
+      "name": "喝水提醒",
+      "time": "16:30",
+      "message": "工作辛苦啦，起来喝杯水吧！",
+      "enabled": true
+    }
+  ]
+}
