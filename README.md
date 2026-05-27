@@ -29,6 +29,19 @@
 
 ### 🆕 更新日志
 
+#### v1.1.0
+- 🤖 **AI 对话情绪联动动画**：与库洛米 AI 聊天时，会自动识别她回复中的情绪并切换到对应的动画状态——
+  - 回复带有「开心 / 高兴 / 快乐 / 喜欢 / 哈哈 / 嘿嘿 / 可爱」等字眼时 → 切换到 `happy` 帧
+  - 回复带有「生气 / 讨厌 / 哼 / 气死 / 烦死 / 无语」等字眼时 → 切换到 `angry` 帧
+  - 回复带有「偷看 / 偷偷 / 害羞 / 悄悄」等字眼时 → 切换到 `peek` 帧
+  - 切换持续约 6 秒后自动恢复
+- 🎯 **三层情绪识别策略**（优先级从高到低）：
+  1. 模型显式标注的括号标签（如 `（开心）`、`（生气）`）—— 最可信
+  2. 回复末尾 12 字符内的裸关键词兜底（如「好开心」）
+  3. **全文关键词扫描**（本次新增）：即使模型忘记加情绪标签，只要正文中出现情绪字眼也能触发动画切换
+- ⚖️ **冲突优先级**：当回复中同时出现多种情绪关键词时，按 `angry > happy > peek` 的顺序判定，避免普通的「哈哈」覆盖更强的「生气」信号
+- P.S. 我把config文件的api_key删除了，如果你要使用代码的话，需要自己取glm的官网上申请一个免费的api key
+
 #### v1.0.1
 - 🎭 **手动切换状态时不再有"先变开心再回来"的过渡**：右键菜单切换状态会直接呈现目标状态，气泡仅作文字提示。
 - 🪟 **修复添加 / 修改提醒对话框中文字被截断的问题**：
@@ -182,6 +195,19 @@ pyinstaller KuromiPet.spec --noconfirm --clean
 - 💤 **Idle chatter**: random cute lines every few minutes
 
 ### 🆕 Changelog
+
+#### v1.1.0
+- 🤖 **AI chat now drives the animation state**: while chatting with Kuromi, her reply is scanned for emotion words and the matching animation kicks in automatically —
+  - Words like "开心 / 高兴 / 快乐 / 喜欢 / 哈哈 / 嘿嘿 / 可爱" (happy / glad / love / haha) → switches to the `happy` frames
+  - Words like "生气 / 讨厌 / 哼 / 气死 / 烦死 / 无语" (angry / hate / hmph / annoyed) → switches to the `angry` frames
+  - Words like "偷看 / 偷偷 / 害羞 / 悄悄" (peek / shy / sneaky) → switches to the `peek` frames
+  - The temporary state lasts ~6 s before reverting
+- 🎯 **Three-layer emotion detection** (high → low priority):
+  1. Explicit bracket tags from the model, e.g. `（开心）` / `（生气）` — most reliable
+  2. Bare keyword fallback in the last 12 characters of the reply (e.g. "好开心")
+  3. **Full-text keyword scan (new in this release)**: even if the model forgets the bracket tag, any emotion word inside the reply still triggers the animation
+- ⚖️ **Tie-breaking**: when multiple emotion words coexist in a reply, the priority order is `angry > happy > peek`, so a casual "haha" never overrides a stronger "angry" signal
+- P.S. I delete the api_key in config.py, if you want to use the code, you should ask for a api key in GLM official website
 
 #### v1.0.1
 - 🎭 **Manual state switch is now instant** — no more "flash to happy and back". The right-click state switch jumps straight to the target state; the bubble is text-only.

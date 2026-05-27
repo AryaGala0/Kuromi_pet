@@ -272,12 +272,11 @@ class ChatInputBubble(QWidget):
             return
         super().keyPressEvent(e)
 
-    def show_at_pet(self):
-        """放在桌宠头顶并显示。"""
-        self.input_edit.setEnabled(True)
-        self.input_edit.setPlaceholderText("和库洛米说点什么... (Enter 发送, Esc 关闭)")
-        self.input_edit.clear()
+    def reposition_to_pet(self):
+        """根据桌宠当前位置把输入框摆到合适位置（不改变可见性 / 焦点）。
 
+        在桌宠拖动过程中也会被调用，用来让输入框跟随移动。
+        """
         pet_center_x = self.pet.x() + self.pet.width() // 2
         x = pet_center_x - self.width() // 2
         y = self.pet.y() - self.height() - 6
@@ -294,6 +293,14 @@ class ChatInputBubble(QWidget):
             target = QApplication.screenAt(self.pet.frameGeometry().center())
             if target is not None and wh.screen() is not target:
                 wh.setScreen(target)
+
+    def show_at_pet(self):
+        """放在桌宠头顶并显示。"""
+        self.input_edit.setEnabled(True)
+        self.input_edit.setPlaceholderText("和库洛米说点什么... (Enter 发送, Esc 关闭)")
+        self.input_edit.clear()
+
+        self.reposition_to_pet()
 
         self.show()
         self.raise_()
@@ -786,6 +793,9 @@ class KuromiPet(QWidget):
             # 拖动时气泡跟随
             if self.bubble.isVisible():
                 self._position_bubble()
+            # 拖动时 AI 对话输入框也跟随
+            if self._chat_input is not None and self._chat_input.isVisible():
+                self._chat_input.reposition_to_pet()
             e.accept()
 
     def mouseReleaseEvent(self, e: QMouseEvent):
