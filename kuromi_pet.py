@@ -17,7 +17,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt, QTimer, QPoint, QRectF, QSize
 from PySide6.QtGui import (
-    QPixmap, QPainter, QColor, QFont, QAction, QIcon,
+    QPixmap, QPainter, QColor, QFont, QFontMetrics, QAction, QIcon,
     QPainterPath, QPen, QCursor, QMouseEvent
 )
 from PySide6.QtWidgets import (
@@ -138,15 +138,21 @@ QMenu::right-arrow {
 
 # 添加提醒对话框样式（紫色主题）
 DIALOG_QSS = """
-QDialog {
+QDialog, QMessageBox {
     background-color: #3a1f4d;
     color: #f5e6ff;
     font-family: 'Microsoft YaHei', 'Segoe UI';
     font-size: 12px;
 }
+QMessageBox QLabel {
+    color: #f5e6ff;
+    min-width: 320px;
+    padding: 4px;
+}
 QLabel {
     color: #f5e6ff;
     font-size: 12px;
+    background: transparent;
 }
 QLineEdit, QTimeEdit {
     background-color: #2a1538;
@@ -164,9 +170,10 @@ QPushButton {
     color: #ffffff;
     border: none;
     border-radius: 6px;
-    padding: 6px 18px;
+    padding: 8px 22px;
     font-weight: bold;
-    min-width: 60px;
+    min-width: 72px;
+    min-height: 22px;
 }
 QPushButton:hover {
     background-color: #a04fce;
@@ -199,25 +206,30 @@ class AddReminderDialog(QDialog):
 
         self.setWindowTitle("修改提醒" if self._editing else "添加新提醒")
         self.setStyleSheet(DIALOG_QSS)
-        self.setFixedWidth(340)
+        self.setMinimumWidth(420)
         self.setWindowFlags(self.windowFlags() | Qt.WindowStaysOnTopHint)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 18, 18, 14)
-        layout.setSpacing(10)
+        layout.setContentsMargins(20, 18, 20, 14)
+        layout.setSpacing(12)
 
         form = QFormLayout()
-        form.setSpacing(8)
+        form.setSpacing(10)
+        form.setLabelAlignment(Qt.AlignRight | Qt.AlignVCenter)
+        form.setFieldGrowthPolicy(QFormLayout.AllNonFixedFieldsGrow)
 
         self.name_edit = QLineEdit()
         self.name_edit.setPlaceholderText("例如：吃早餐")
+        self.name_edit.setMinimumHeight(30)
 
         self.time_edit = QTimeEdit()
         self.time_edit.setDisplayFormat("HH:mm")
         self.time_edit.setTime(QTime.currentTime())
+        self.time_edit.setMinimumHeight(30)
 
         self.msg_edit = QLineEdit()
         self.msg_edit.setPlaceholderText("提醒时库洛米要说的话~")
+        self.msg_edit.setMinimumHeight(30)
 
         # 预填（修改模式）
         if self._editing:
@@ -248,12 +260,20 @@ class AddReminderDialog(QDialog):
 
     def _on_accept(self):
         if not self.name_edit.text().strip():
-            QMessageBox.warning(self, "提示", "请填写提醒名称~")
+            self._warn("请填写提醒名称~")
             return
         if not self.msg_edit.text().strip():
-            QMessageBox.warning(self, "提示", "请填写提醒内容~")
+            self._warn("请填写提醒内容~")
             return
         self.accept()
+
+    def _warn(self, text: str):
+        box = QMessageBox(self)
+        box.setStyleSheet(DIALOG_QSS)
+        box.setIcon(QMessageBox.Warning)
+        box.setWindowTitle("提示")
+        box.setText(text)
+        box.exec()
 
     def get_data(self) -> dict:
         """返回数据：新增→生成新 id；修改→沿用原 id 和 enabled 状态。"""
@@ -292,6 +312,10 @@ class SpeechBubble(QWidget):
         self.text = ""
         self.padding = 14
         self.max_width = 240
+        self.tail_height = 10
+        # 与 paintEvent 中绘制使用完全一致的字体，保证测量 == 实际绘制
+        self._text_font = QFont("Microsoft YaHei", 10)
+        self._text_font.setBold(True)
         self._hide_timer = QTimer(self)
         self._hide_timer.setSingleShot(True)
         self._hide_timer.timeout.connect(self.hide)
@@ -301,14 +325,25 @@ class SpeechBubble(QWidget):
         调用方应在 resize 后 move() 到正确位置，再调用 reveal()。
         """
         self.text = text
-        fm = self.fontMetrics()
-        # 自动换行计算
+        fm = QFontMetrics(self._text_font)
+
+        inner_w = self.max_width - self.padding * 2
+        flags = Qt.TextWordWrap | Qt.AlignLeft
+
+        # 用一个足够大的高度让 boundingRect 算出真实换行后的高度
         rect = fm.boundingRect(
-            0, 0, self.max_width - self.padding * 2, 0,
-            Qt.TextWordWrap, text
+            0, 0, inner_w, 10000,
+            flags, text
         )
-        w = rect.width() + self.padding * 2
-        h = rect.height() + self.padding * 2 + 10  # +尾巴
+
+        # 多行中文 + 显式 \n 时再加一点冗余，避免最后一行被截
+        line_h = fm.lineSpacing()
+        text_w = max(rect.width(), fm.horizontalAdvance("库洛米"))
+        text_h = rect.height() + line_h // 2  # 冗余半行防止下沉字符被切
+
+        w = min(text_w, inner_w) + self.padding * 2
+        h = text_h + self.padding * 2 + self.tail_height
+
         self.resize(w, h)
         self.update()
         self._hide_timer.start(duration_ms)
@@ -323,7 +358,7 @@ class SpeechBubble(QWidget):
         p.setRenderHint(QPainter.Antialiasing)
 
         w, h = self.width(), self.height()
-        body_h = h - 10  # 减去尾巴
+        body_h = h - self.tail_height  # 减去尾巴
 
         # 圆角矩形主体
         path = QPainterPath()
@@ -342,11 +377,9 @@ class SpeechBubble(QWidget):
         p.setBrush(QColor(255, 245, 252, 240))
         p.drawPath(path)
 
-        # 文字
+        # 文字（与 show_text 中用于测量的字体保持一致）
         p.setPen(QColor(60, 30, 80))
-        font = QFont("Microsoft YaHei", 10)
-        font.setBold(True)
-        p.setFont(font)
+        p.setFont(self._text_font)
         text_rect = QRectF(
             self.padding, self.padding,
             w - self.padding * 2,
@@ -490,7 +523,7 @@ class KuromiPet(QWidget):
         if announce:
             phrase = random.choice(STATE_PHRASES.get(state, [""]))
             self.say(f"切换到「{STATE_LABELS.get(state, state)}」状态\n{phrase}",
-                     duration=4000)
+                     happy=False, duration=4000)
 
     def cycle_state(self):
         """按顺序切到下一个可用状态。"""
@@ -588,7 +621,7 @@ class KuromiPet(QWidget):
                 self.fire_reminder(r)
 
     def fire_reminder(self, reminder: dict):
-        msg = f"⏰ {reminder['name']}\n{reminder['message']}"
+        msg = f"{reminder['name']}\n{reminder['message']}"
         self.say(msg, happy=True, duration=10000)
         # 系统托盘也来一发
         if hasattr(self, "tray"):
@@ -645,7 +678,7 @@ class KuromiPet(QWidget):
 
         # 状态切换子菜单
         state_menu = menu.addMenu(
-            f"🎭 切换状态（当前：{STATE_LABELS.get(self.current_state, self.current_state)}）"
+            f"切换状态（当前：{STATE_LABELS.get(self.current_state, self.current_state)}）"
         )
         state_menu.setStyleSheet(MENU_QSS)
         for s in self.available_states:
@@ -662,7 +695,7 @@ class KuromiPet(QWidget):
         menu.addSeparator()
 
         # 提醒子菜单
-        rem_menu = menu.addMenu("⏰ 今日提醒")
+        rem_menu = menu.addMenu("今日提醒")
         rem_menu.setStyleSheet(MENU_QSS)
 
         reminders = self.config.get("reminders", [])
@@ -767,6 +800,7 @@ class KuromiPet(QWidget):
     def _delete_reminder(self, reminder: dict):
         """弹确认框删除指定提醒。"""
         box = QMessageBox(self)
+        box.setStyleSheet(DIALOG_QSS)
         box.setWindowTitle("删除提醒")
         box.setIcon(QMessageBox.Question)
         box.setText(
@@ -817,6 +851,7 @@ class KuromiPet(QWidget):
 
     def _show_about(self):
         box = QMessageBox(self)
+        box.setStyleSheet(DIALOG_QSS)
         box.setWindowTitle("关于库洛米桌宠")
         box.setText(
             "🖤 库洛米桌面宠物 v1.0\n\n"

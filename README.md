@@ -27,6 +27,19 @@
 - 🎭 **表情切换**：触发提醒时切换成开心表情
 - 💤 **闲聊**：每隔几分钟随机蹦一句话
 
+### 🆕 更新日志
+
+#### v1.0.1
+- 🎭 **手动切换状态时不再有"先变开心再回来"的过渡**：右键菜单切换状态会直接呈现目标状态，气泡仅作文字提示。
+- 🪟 **修复添加 / 修改提醒对话框中文字被截断的问题**：
+  - 对话框宽度从固定 340px 改为最小 420px，可随内容自适应
+  - 输入框增加最小高度，并设置为可随窗口拉伸
+  - 「保存 / 添加 / 取消」按钮加大内边距，避免按钮文字被裁
+- 🎨 **`QMessageBox`（关于 / 删除确认 / 输入校验提示）适配紫色主题**：之前在透明桌宠下可能出现黑底黑字看不清的问题已修复，并设置最小宽度避免长文本截断。
+- 💬 **修复气泡 `SpeechBubble` 文字被折叠 / 最后一行被裁的问题**：测量与绘制使用同一份 `QFont` 实例，并采用足够大的最大高度让 `boundingRect` 正确计算多行换行后的真实高度，额外加半行冗余防止下沉笔画被切。
+
+
+
 ### 🛠 技术栈
 
 | 项目 | 选用 | 理由 |
@@ -167,6 +180,19 @@ pyinstaller KuromiPet.spec --noconfirm --clean
 - 🎀 **Right-click menu**: view / add / edit / delete reminders, switch state
 - 🎭 **Emotion switching**: shows a happy face when a reminder fires
 - 💤 **Idle chatter**: random cute lines every few minutes
+
+### 🆕 Changelog
+
+#### v1.0.1
+- 🎭 **Manual state switch is now instant** — no more "flash to happy and back". The right-click state switch jumps straight to the target state; the bubble is text-only.
+- 🪟 **Fixed clipped text in the Add / Edit Reminder dialog**:
+  - Dialog width changed from a fixed 340px to a minimum 420px and auto-grows with content
+  - Inputs now have a minimum height and stretch with the dialog
+  - "Save / Add / Cancel" buttons get larger padding so the labels are no longer cut off
+- 🎨 **`QMessageBox` (About / Delete confirm / input validation) now follows the purple theme** — fixes the previous "black-on-black, unreadable" issue on the transparent pet, and adds a minimum width to prevent long text from being truncated.
+- 💬 **Fixed the `SpeechBubble` collapsing text / clipping the last line**: measurement and painting now use the exact same `QFont` instance, and `boundingRect` is given a large enough max height to correctly compute the wrapped multi-line height, with an extra half-line of padding so descenders are no longer chopped.
+
+
 
 ### 🛠 Tech Stack
 
