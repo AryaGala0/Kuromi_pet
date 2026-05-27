@@ -26,11 +26,12 @@
 - 🎀 **右键菜单**：查看 / 添加 / 修改 / 删除提醒、切换状态
 - 🎭 **表情切换**：触发提醒时切换成开心表情
 - 💤 **闲聊**：每隔几分钟随机蹦一句话
+- 🤖 AI对话：双击库洛米或者按下Shift+G键即可开启与库洛米的AI对话
 
 ### 🆕 更新日志
 
 #### v1.1.0
-- 🤖 **AI 对话情绪联动动画**：与库洛米 AI 聊天时，会自动识别她回复中的情绪并切换到对应的动画状态——
+- 🤖 **AI 对话情绪联动动画**：与库洛米 AI 聊天时，会自动识别她回复中的情绪并切换到对应的动画状态—— 双击库洛米或者按下Shift+G键即可开启与库洛米的AI对话
   - 回复带有「开心 / 高兴 / 快乐 / 喜欢 / 哈哈 / 嘿嘿 / 可爱」等字眼时 → 切换到 `happy` 帧
   - 回复带有「生气 / 讨厌 / 哼 / 气死 / 烦死 / 无语」等字眼时 → 切换到 `angry` 帧
   - 回复带有「偷看 / 偷偷 / 害羞 / 悄悄」等字眼时 → 切换到 `peek` 帧
@@ -68,48 +69,17 @@
 ```powershell
 # 1. 安装依赖
 pip install -r requirements.txt
-
-# 2. 把精灵图（4 行 × 6 帧）保存为 assets/sheet.png
-#    然后切图（自动把白底转透明）
-python slice_sheet.py
-
-# 3. 运行桌宠
+# 2. 运行桌宠
 python kuromi_pet.py
 ```
 
 > Windows 推荐 Python ≥ 3.10。
-
-### 🎞 帧动画系统
-
-- 精灵图共 **4 行**，每行代表一种状态，每行 **6 帧**：
-
-| 行 | 状态 ID | 说明 |
-|---|---|---|
-| 1 | `normal` | 日常 |
-| 2 | `happy`  | 开心 / 爱心 |
-| 3 | `angry`  | 生气 / 喷气 |
-| 4 | `peek`   | 偷看（半身） |
-
-- 默认 **10 FPS** 循环播放当前状态的 6 帧
-- **每 20 分钟**自动按顺序切换到下一个状态
-- **右键菜单 → 🎭 切换状态**：手动切换 / 直接跳到指定状态
-- 触发提醒时会**临时切到 happy**，过几秒自动还原
-- 双击桌宠会**临时切到 angry**，调皮一下
-
-> FPS 和切换间隔可在 `config.json -> animation` 中改：
-> ```json
-> "animation": { "fps": 10, "state_switch_minutes": 20 }
-> ```
 
 ### 🗂 目录结构
 
 ```
 Kuromi/
 ├── kuromi_pet.py        # 主程序
-├── slice_sheet.py       # 精灵图切分工具（白底转透明）
-├── make_icon.py         # 生成 exe 图标
-├── KuromiPet.spec       # PyInstaller 打包配置
-├── build.bat            # 一键打包脚本
 ├── config.json          # 提醒 + 动画配置
 ├── requirements.txt
 ├── README.md
@@ -149,27 +119,8 @@ Kuromi/
 | 右键 | 弹出菜单 |
 | 托盘双击 | 显示 / 隐藏库洛米 |
 
-### 📦 打包成单独 exe
 
-仓库已附带 `KuromiPet.spec` 与一键脚本 `build.bat`：
-
-```powershell
-# (可选) 生成 exe 图标
-python make_icon.py
-
-# 一键打包
-build.bat
-```
-
-或手动执行：
-
-```powershell
-pip install pyinstaller
-pyinstaller KuromiPet.spec --noconfirm --clean
-```
-
-产物：`dist/KuromiPet.exe`，双击即可运行，无需 Python 环境。  
-首次启动会在 exe 旁边自动生成 `config.json`，用户对提醒的修改会持久保存。
+产物：`Release/KuromiPet.exe`，双击即可运行，无需 Python 环境。  
 
 ### 🌟 后续可扩展
 
@@ -193,6 +144,7 @@ pyinstaller KuromiPet.spec --noconfirm --clean
 - 🎀 **Right-click menu**: view / add / edit / delete reminders, switch state
 - 🎭 **Emotion switching**: shows a happy face when a reminder fires
 - 💤 **Idle chatter**: random cute lines every few minutes
+- 🤖 AI Chat: double click kuromi or press Shift+G, then you can chat with AI kuromi
 
 ### 🆕 Changelog
 
@@ -236,47 +188,18 @@ pyinstaller KuromiPet.spec --noconfirm --clean
 # 1. Install dependencies
 pip install -r requirements.txt
 
-# 2. Put your 4-row x 6-frame sprite sheet at assets/sheet.png,
-#    then slice it (white background will be turned transparent)
-python slice_sheet.py
-
-# 3. Run the pet
+# 2. Run the pet
 python kuromi_pet.py
 ```
 
 > Python ≥ 3.10 is recommended on Windows.
 
-### 🎞 Frame Animation
-
-- The sprite sheet has **4 rows × 6 frames**:
-
-| Row | State ID | Meaning |
-|---|---|---|
-| 1 | `normal` | Idle |
-| 2 | `happy`  | Happy / hearts |
-| 3 | `angry`  | Angry / steaming |
-| 4 | `peek`   | Peeking (half-body) |
-
-- Plays 6 frames of the current state in a loop at **10 FPS** by default
-- Automatically rotates to the next state every **20 minutes**
-- **Right-click → 🎭 Switch State** to change manually or jump to a specific state
-- A reminder temporarily switches Kuromi to `happy`, then restores
-- Double-click temporarily switches her to `angry` for a playful pout
-
-> Tweak FPS and rotation in `config.json -> animation`:
-> ```json
-> "animation": { "fps": 10, "state_switch_minutes": 20 }
-> ```
 
 ### 🗂 Project Layout
 
 ```
 Kuromi/
-├── kuromi_pet.py        # Main program
-├── slice_sheet.py       # Sprite slicer (white background -> transparent)
-├── make_icon.py         # Generates the exe icon
-├── KuromiPet.spec       # PyInstaller build config
-├── build.bat            # One-click build script
+├── kuromi_pet.py        # Main program         # One-click build script
 ├── config.json          # Reminders + animation config
 ├── requirements.txt
 ├── README.md
@@ -316,27 +239,8 @@ Edit `config.json` directly:
 | Right-click | Open the context menu |
 | Double-click tray icon | Show / hide Kuromi |
 
-### 📦 Build a Standalone exe
-
-A `KuromiPet.spec` and a one-click `build.bat` are included:
-
-```powershell
-# (optional) generate the exe icon first
-python make_icon.py
-
-# one-click build
-build.bat
-```
-
-Or manually:
-
-```powershell
-pip install pyinstaller
-pyinstaller KuromiPet.spec --noconfirm --clean
-```
-
-Output: `dist/KuromiPet.exe` — double-click to run, no Python required.  
-On first launch a `config.json` is created next to the exe, so user edits to reminders are persisted.
+### 📦 Standalone exe
+Output: `Release/KuromiPet.exe` — double-click to run, no Python required.  
 
 ### 🌟 Roadmap
 
