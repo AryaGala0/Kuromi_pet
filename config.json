@@ -8,6 +8,17 @@
     "fps": 4,
     "state_switch_minutes": 20
   },
+  "ai": {
+    "enabled": true,
+    "provider": "glm",
+    "api_key": "",
+    "base_url": "https://open.bigmodel.cn/api/paas/v4/",
+    "model": "glm-4-flash",
+    "system_prompt": "",
+    "max_history": 10,
+    "stream": true,
+    "timeout": 30
+  },
   "reminders": [
     {
       "id": "lunch",

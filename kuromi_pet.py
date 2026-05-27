@@ -27,6 +27,14 @@ from PySide6.QtWidgets import (
 )
 from PySide6.QtCore import QTime
 
+# AI 对话模块（按需导入，未配置时不影响主功能）
+try:
+    from ai_chat import ChatHistory, ChatWorker, DEFAULT_SYSTEM_PROMPT
+    _AI_AVAILABLE = True
+except Exception as _e:
+    print(f"[WARN] AI 模块不可用: {_e}")
+    _AI_AVAILABLE = False
+
 
 # ---------------------------------------------------------------------------
 # 路径处理：同时兼容「开发模式」和「PyInstaller 打包后」两种运行环境
@@ -188,6 +196,121 @@ QPushButton#cancel_btn:hover {
     background-color: #6e4a86;
 }
 """
+
+
+# ---------------------------------------------------------------------------
+# 头顶输入气泡：双击库洛米呼出，回车直接发送给 AI
+# ---------------------------------------------------------------------------
+CHAT_INPUT_QSS = """
+QWidget#chat_input_root {
+    background-color: rgba(58, 31, 77, 240);
+    border: 2px solid #b070d8;
+    border-radius: 14px;
+}
+QLineEdit {
+    background-color: #2a1538;
+    color: #ffffff;
+    border: 1px solid #b070d8;
+    border-radius: 8px;
+    padding: 6px 10px;
+    selection-background-color: #8b3fb8;
+    font-family: 'Microsoft YaHei', 'Segoe UI';
+    font-size: 12px;
+    min-height: 22px;
+}
+QLineEdit:focus { border: 1px solid #ff9cd8; }
+QLineEdit:disabled { background-color: #3a2550; color: #a98bbb; }
+"""
+
+
+class ChatInputBubble(QWidget):
+    """漂浮在库洛米头顶的小输入框：回车 → 发送给 AI；Esc / 失焦 → 隐藏。"""
+
+    def __init__(self, pet: "KuromiPet"):
+        super().__init__(
+            None,
+            Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint | Qt.Tool
+        )
+        self.pet = pet
+        self.setAttribute(Qt.WA_TranslucentBackground)
+        # 强制创建原生窗口句柄，便于多屏 setScreen
+        self.create()
+
+        # 根容器（用于绘制圆角紫色背景）
+        self._root = QWidget(self)
+        self._root.setObjectName("chat_input_root")
+        self._root.setStyleSheet(CHAT_INPUT_QSS)
+
+        self.input_edit = QLineEdit(self._root)
+        self.input_edit.setPlaceholderText("和库洛米说点什么... (Enter 发送, Esc 关闭)")
+        self.input_edit.returnPressed.connect(self._on_submit)
+
+        root_layout = QVBoxLayout(self)
+        root_layout.setContentsMargins(0, 0, 0, 0)
+        root_layout.addWidget(self._root)
+
+        inner = QHBoxLayout(self._root)
+        inner.setContentsMargins(10, 8, 10, 8)
+        inner.addWidget(self.input_edit)
+
+        self.resize(300, 46)
+
+    # 失去焦点时自动收起（点击桌宠之外的地方）
+    def focusOutEvent(self, e):
+        QTimer.singleShot(120, self._hide_if_no_focus)
+        super().focusOutEvent(e)
+
+    def _hide_if_no_focus(self):
+        # 如果焦点没有跑到子控件上，就隐藏
+        fw = QApplication.focusWidget()
+        if fw is None or (fw is not self.input_edit and not self.isAncestorOf(fw)):
+            self.hide()
+
+    def keyPressEvent(self, e):
+        if e.key() == Qt.Key_Escape:
+            self.hide()
+            return
+        super().keyPressEvent(e)
+
+    def show_at_pet(self):
+        """放在桌宠头顶并显示。"""
+        self.input_edit.setEnabled(True)
+        self.input_edit.setPlaceholderText("和库洛米说点什么... (Enter 发送, Esc 关闭)")
+        self.input_edit.clear()
+
+        pet_center_x = self.pet.x() + self.pet.width() // 2
+        x = pet_center_x - self.width() // 2
+        y = self.pet.y() - self.height() - 6
+
+        screen = self.pet._current_screen_geometry()
+        x = max(screen.left() + 5, min(x, screen.right() - self.width() - 5))
+        if y < screen.top():
+            y = self.pet.y() + self.pet.height() + 6
+        self.move(x, y)
+
+        # 多屏：把窗口句柄绑到桌宠所在屏幕
+        wh = self.windowHandle()
+        if wh is not None:
+            target = QApplication.screenAt(self.pet.frameGeometry().center())
+            if target is not None and wh.screen() is not target:
+                wh.setScreen(target)
+
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.input_edit.setFocus()
+
+    def _on_submit(self):
+        text = self.input_edit.text().strip()
+        if not text:
+            return
+        # 交给 pet 去发送，输入框临时禁用 + 显示等待提示
+        self.input_edit.setEnabled(False)
+        self.input_edit.setPlaceholderText("库洛米正在想... ٩(ˊᗜˋ*)و")
+        self.input_edit.clear()
+        # 隐藏输入框，让头顶气泡能干净地显示回复
+        self.hide()
+        self.pet.send_to_ai(text)
 
 
 # ---------------------------------------------------------------------------
@@ -458,6 +581,25 @@ class KuromiPet(QWidget):
         self._temp_state_timer.timeout.connect(self._restore_state)
         self._prev_state_before_temp: str | None = None
 
+        # ----- AI 对话历史 + 输入气泡 + worker -----
+        ai_cfg = config.get("ai", {}) or {}
+        if _AI_AVAILABLE:
+            self.chat_history = ChatHistory(
+                system_prompt=ai_cfg.get("system_prompt") or DEFAULT_SYSTEM_PROMPT,
+                max_turns=int(ai_cfg.get("max_history", 10)),
+            )
+        else:
+            self.chat_history = None
+        self._chat_input: ChatInputBubble | None = None
+        self._chat_worker: ChatWorker | None = None
+        self._streaming_buffer: list[str] = []
+        self._streaming_user_input: str = ""
+
+        # ----- 全局热键 Shift+G 呼出聊天 -----
+        self._hotkey_id = 1   # Windows RegisterHotKey ID
+        self._hotkey_registered = False
+        self._register_global_hotkey()
+
         # 初始位置：屏幕右下角
         self._move_to_corner()
 
@@ -651,9 +793,181 @@ class KuromiPet(QWidget):
 
     def mouseDoubleClickEvent(self, e: QMouseEvent):
         if e.button() == Qt.LeftButton:
-            if "angry" in self.frames:
-                self._temp_set_state("angry", 4000)
-            self.say("哼！别摸我啦~(>﹏<)", happy=False, duration=4000)
+            # 双击：呼出头顶输入气泡（AI 启用时），否则保留原来的小生气
+            ai_cfg = self.config.get("ai", {}) or {}
+            if _AI_AVAILABLE and ai_cfg.get("enabled", False):
+                self.open_chat_input()
+            else:
+                if "angry" in self.frames:
+                    self._temp_set_state("angry", 4000)
+                self.say("哼！别摸我啦~(>﹏<)", happy=False, duration=4000)
+
+    # ----------------- AI 聊天（头顶输入气泡） -----------------
+    def open_chat_input(self):
+        """在桌宠头顶弹出一个输入气泡。"""
+        if not _AI_AVAILABLE:
+            self.say("AI 模块未安装~\n请先 pip install zai-sdk", happy=False, duration=5000)
+            return
+        ai_cfg = self.config.get("ai", {}) or {}
+        if not ai_cfg.get("enabled", False):
+            self.say("AI 功能未启用哦~\n请在 config.json 里把 ai.enabled 改成 true",
+                     happy=False, duration=6000)
+            return
+        if not (ai_cfg.get("api_key") or "").strip():
+            self.say("还没填 API Key 呢~\n去 config.json 配置一下吧",
+                     happy=False, duration=6000)
+            return
+        # 正在回复中？提示用户稍等
+        if self._chat_worker is not None and self._chat_worker.isRunning():
+            self.say("等等啦~还在想上一句呢 (>﹏<)", happy=False, duration=2500)
+            return
+        # 把可能还没散去的气泡先关掉，让输入框干净地出现
+        if self.bubble.isVisible():
+            self.bubble.hide()
+
+        if self._chat_input is None:
+            self._chat_input = ChatInputBubble(self)
+        self._chat_input.show_at_pet()
+
+    def send_to_ai(self, user_text: str):
+        """把用户输入发送给 GLM，回复以头顶气泡形式展示（流式更新）。"""
+        ai_cfg = self.config.get("ai", {}) or {}
+        api_key = (ai_cfg.get("api_key") or "").strip()
+        if not api_key or self.chat_history is None:
+            return
+
+        # 构造 messages
+        messages = self.chat_history.build_messages(user_text)
+
+        # 桌宠先开口提示一下，进入“思考”视觉
+        self.say("嗯…让我想想 (｡•ㅅ•｡)", happy=False, duration=60000)
+
+        self._streaming_buffer = []
+        self._streaming_user_input = user_text
+
+        self._chat_worker = ChatWorker(
+            api_key=api_key,
+            base_url=ai_cfg.get("base_url", ""),
+            model=ai_cfg.get("model", "glm-4-flash"),
+            messages=messages,
+            stream=bool(ai_cfg.get("stream", True)),
+            timeout=int(ai_cfg.get("timeout", 30)),
+        )
+        self._chat_worker.chunk_received.connect(self._on_ai_chunk)
+        self._chat_worker.finished_ok.connect(self._on_ai_finished)
+        self._chat_worker.error.connect(self._on_ai_error)
+        self._chat_worker.start()
+
+    def _on_ai_chunk(self, piece: str):
+        """流式接收：实时更新头顶气泡。"""
+        from ai_chat import EMOTION_PATTERN
+        self._streaming_buffer.append(piece)
+        full = "".join(self._streaming_buffer)
+        # 显示前剥掉（可能不完整的）情绪标签碎片
+        show = EMOTION_PATTERN.sub("", full).rstrip()
+        if not show:
+            return
+        # 复用 say()：但不要每次都把状态切到 happy（避免抖动），只刷新气泡内容
+        self.bubble.show_text(show, duration_ms=60000)
+        self._position_bubble()
+        self.bubble.reveal()
+
+    def _on_ai_finished(self, full_text: str, emotion: str):
+        """完整回复就绪：写历史 + 切动画 + 最终气泡停留。"""
+        text = full_text.strip() or "……"
+        if self.chat_history is not None:
+            self.chat_history.add_user(self._streaming_user_input)
+            self.chat_history.add_assistant(
+                text + (f" [emotion:{emotion}]" if emotion else "")
+            )
+
+        # 调试输出：方便确认情绪是否被正确识别
+        print(f"[AI] full_text={text!r}, emotion={emotion!r}, "
+              f"frames_keys={list(self.frames.keys())}")
+
+        # 先显示气泡（注意 happy=False，避免 say() 内部覆盖我们要切的情绪状态）
+        self.say(text, happy=False, duration=8000)
+
+        # 再切到对应情绪动画（放在 say 之后，确保不被覆盖）
+        if emotion and emotion in self.frames:
+            self._temp_set_state(emotion, 6000)
+            print(f"[AI] -> 切换到 '{emotion}' 状态 6 秒")
+        elif emotion:
+            print(f"[AI] WARN: 情绪 '{emotion}' 不在可用 frames 中，跳过切换")
+
+        self._streaming_buffer = []
+        self._streaming_user_input = ""
+        self._chat_worker = None
+
+    def _on_ai_error(self, msg: str):
+        self.say(f"呜...出错啦~\n{msg}", happy=False, duration=5000)
+        self._streaming_buffer = []
+        self._streaming_user_input = ""
+        self._chat_worker = None
+
+    # ----------------- 全局快捷键 Shift+G -----------------
+    def _register_global_hotkey(self):
+        """注册系统级全局快捷键 Shift+G。
+
+        - Windows：使用 ctypes 调 RegisterHotKey + nativeEvent 监听 WM_HOTKEY
+        - 其他平台：降级为窗口级 QShortcut（仅在桌宠获得焦点时生效）
+        """
+        if sys.platform == "win32":
+            try:
+                import ctypes
+                MOD_SHIFT = 0x0004
+                MOD_NOREPEAT = 0x4000  # 防止按住时连续触发
+                VK_G = 0x47
+                hwnd = int(self.winId())
+                ok = ctypes.windll.user32.RegisterHotKey(
+                    hwnd, self._hotkey_id, MOD_SHIFT | MOD_NOREPEAT, VK_G
+                )
+                if ok:
+                    self._hotkey_registered = True
+                    print("[INFO] 全局热键 Shift+G 已注册")
+                    return
+                else:
+                    print("[WARN] 全局热键 Shift+G 注册失败（可能被其他程序占用），降级为窗口快捷键")
+            except Exception as e:
+                print(f"[WARN] 注册全局热键失败：{e}，降级为窗口快捷键")
+
+        # 降级方案：窗口级快捷键（需要桌宠拥有焦点）
+        try:
+            from PySide6.QtGui import QShortcut, QKeySequence
+            sc = QShortcut(QKeySequence("Shift+G"), self)
+            sc.setContext(Qt.ApplicationShortcut)
+            sc.activated.connect(self.open_chat_input)
+        except Exception as e:
+            print(f"[WARN] 窗口级快捷键也注册失败：{e}")
+
+    def _unregister_global_hotkey(self):
+        if self._hotkey_registered and sys.platform == "win32":
+            try:
+                import ctypes
+                ctypes.windll.user32.UnregisterHotKey(int(self.winId()), self._hotkey_id)
+            except Exception:
+                pass
+            self._hotkey_registered = False
+
+    def nativeEvent(self, eventType, message):
+        """监听 Windows 原生消息：捕获 WM_HOTKEY 触发聊天框。"""
+        if sys.platform == "win32" and self._hotkey_registered:
+            try:
+                import ctypes
+                from ctypes import wintypes
+                WM_HOTKEY = 0x0312
+                msg = ctypes.cast(int(message), ctypes.POINTER(wintypes.MSG))[0]
+                if msg.message == WM_HOTKEY and msg.wParam == self._hotkey_id:
+                    # 在主线程异步触发，避免阻塞消息泵
+                    QTimer.singleShot(0, self.open_chat_input)
+                    return True, 0
+            except Exception:
+                pass
+        return super().nativeEvent(eventType, message)
+
+    def closeEvent(self, e):
+        self._unregister_global_hotkey()
+        super().closeEvent(e)
 
     def contextMenuEvent(self, e):
         menu = self._build_menu()
@@ -673,6 +987,16 @@ class KuromiPet(QWidget):
             lambda: self.say(f"现在是 {datetime.now().strftime('%H:%M:%S')} 哦~")
         )
         menu.addAction(act_time)
+
+        # AI 聊天入口（头顶输入气泡）
+        ai_cfg = self.config.get("ai", {}) or {}
+        ai_enabled = _AI_AVAILABLE and ai_cfg.get("enabled", False)
+        act_chat = QAction("💬 和库洛米说话...（双击我也行~）", self)
+        act_chat.triggered.connect(self.open_chat_input)
+        act_chat.setEnabled(ai_enabled)
+        if not ai_enabled:
+            act_chat.setText("💬 和库洛米说话（未启用）")
+        menu.addAction(act_chat)
 
         menu.addSeparator()
 
@@ -868,25 +1192,34 @@ class KuromiPet(QWidget):
 # 配置加载 / 保存
 # ---------------------------------------------------------------------------
 def load_config() -> dict:
-    # 首次运行：把打包内置的默认 config.json 复制到 exe 旁边
-    if not CONFIG_PATH.exists():
-        try:
-            if DEFAULT_CONFIG_PATH.exists() and DEFAULT_CONFIG_PATH != CONFIG_PATH:
-                import shutil
-                shutil.copyfile(DEFAULT_CONFIG_PATH, CONFIG_PATH)
-        except Exception as e:
-            print(f"[WARN] 复制默认配置失败：{e}")
+    """加载配置：优先读 USER_DIR/config.json，没有则读打包内置默认配置。
 
-    if not CONFIG_PATH.exists():
+    注意：本函数**不会**在用户目录创建 config.json 文件。
+    """
+    target = CONFIG_PATH if CONFIG_PATH.exists() else DEFAULT_CONFIG_PATH
+    if not target.exists():
         return {"pet": {"size": 180, "always_on_top": True}, "reminders": []}
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    try:
+        with open(target, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"[WARN] 读取配置失败：{e}")
+        return {"pet": {"size": 180, "always_on_top": True}, "reminders": []}
 
 
 def save_config(cfg: dict):
-    CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
-    with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-        json.dump(cfg, f, ensure_ascii=False, indent=2)
+    """仅当 config.json 已存在时才覆盖写入；否则不创建新文件。
+
+    这样运行过程中（包括打包后的 exe 旁边）不会凭空生成 config.json。
+    """
+    if not CONFIG_PATH.exists():
+        # 文件不存在：什么都不做，避免在运行目录生成 config.json
+        return
+    try:
+        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"[WARN] 写入配置失败：{e}")
 
 
 # ---------------------------------------------------------------------------
